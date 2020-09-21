@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="bluez-web-bluetooth" content="width=device-width, initial-scale=1.0">
+        <title>Document</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js"></script>
+        <script src="telink-ota.js"></script>
+        <script src="aes.js"></script>
+
+    </head>
+    <style>
+      html { margin: 0; padding: 0; border: 0; }
+      body { font-family: 'Raleway', sans-serif; color: #d7ecfb; background-color: #072b44; text-align: center; }
+      textarea{color:greenyellow; background-color:black;}
+    </style>
+    <body>
+      <div id="main" style="width: 1250px;float: left;">
+        <h3>Web Bluetooth DFU</h3><hr>
+        <div id="drop" style="width: 500px;float: left;">
+          <p>Enter Bluetooth services and Characteristic to connect</p>
+          <input id="service" type="text" list="services" autofocus="" placeholder="Bluetooth Service">
+          <input id="characteristic" type="text" list="characteristics" placeholder="Bluetooth Characteristic"><br><hr>
+          <button id="btn-connect" onclick="clickConnect()">scan bluetooth</button>
+          <button id="btn-disconnet" onclick="deviceDisconnect()">Disconnect</button><hr>
+          <p>Select the file and click the checking button</p>
+          <input id="file" type="file"><br><br>
+          <button onclick="Version_checking()">Version checking</button>
+          <button onclick="NO_Version_checking()">Ignore version checking</button><br><hr><br>
+
+          <button id="shownotificate" onclick="OTA_authentication()">OTA authentication</button><br><hr><br>
+
+          <button id="send" onclick="BeginOTAdata()">start send ota package</button><br><hr><br>
+          
+          <button id="shownotificate" onclick="StopOtasend()">stop OTA</button>
+          <button id="send" onclick="ContinueOTAsend()">continue OTA</button><br><hr><br>
+
+          <a href="http://wiki.telink-semi.cn/web_bluetooth_DFU/OTA_file.rar" style="color: floralwhite;">OTA File Download</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          <a href="http://wiki.telink-semi.cn/web_bluetooth_DFU/ota_spec.svg" style="color: floralwhite;">OTA process Previewc</a>
+        </div>
+        <div id="showlog" style="width: 700px;float: right;">
+          <div id="percent" style="float: left;"> Status: waiting for you to connect a device </div><br><br>
+          <button style="float: left;" onclick="clearLoginfo()">clear log</button>
+          <textarea id="log" cols="110" rows="30" readonly="readonly"></textarea>
+        </div>
+      </div>  
+    </body>
+</html>
+
+<script>
+
+    var firmwareArray = "";
+    var blockCount,fosum = 0;
+    var startTime,sendcmd,OTAEnabled;
+    var getnotifyvalue,last4byte,actionOTA_03ff=0;
+
+    var ServiceMain,nitifiyCharTemp;              //2b12notify
+    var batServiceMain,batnitifiyCharTemp;        //batery
+    var OTApause=1,OTApuasecount=0,OTAversion=0; //OTA-puase,count
+
+    var fanlight = new Fanlight();
+
+    /**
+     * @clickConnect
+     * Scan and connect to nearby Bluetooth devices
+    */
+    function clickConnect(){
+      fanlight.request().then(connt => {
+        addLoginfo("Bluetooth connection successful");
+      })
+      .catch(error => {
+        addLoginfo('Argh! ' + error);
+      });
+    }
+
+    /**
+     * Listen to the file when the page opens
+    */
+    window.onload = function(){  
+      document.getElementById("file").addEventListener("change", function() {
+        var reader = new FileReader();
+        reader.onload = function() {
+            firmwareArray = bytesToHex(this.result);
+            console.log(firmwareArray);
+            let na16hex = bytesToHex(this.result.slice(0,16));
+            console.log("Original file, size: " + firmwareArray.length / 2 + " bytes");
+
+            if (firmwareArray.length % 32 !== 0) { // pad last block to 16bytes
+                var padHex = "ffffffffffffffffffffffffffffffff";
+                firmwareArray += padHex.substr(0, 32 - firmwareArray.length % 32);
+            }
+            blockCount = firmwareArray.length / 32;
+            addLoginfo("File was selected, size: " + firmwareArray.length / 2 + " bytes");
+            addLoginfo("Count: " + blockCount);
+        }
+        if (this.files[0] != null)
+            reader.readAsArrayBuffer(this.files[0]);
+        else
+            console.log("No file selected");
+      }, false);
+    }
+
+ /**
+  * @BeginOTAdata
+  * The entry function to start the OTA upgrade
+  */
+  function BeginOTAdata() {
+    if (blockCount <= 0) {
+      addLoginfo("No file please select file");
+      return;
+    }
+    if(actionOTA_03ff == 0 ){
+      addLoginfo("authenticate failed(Please authenticate first)");
+      return;
+    }  
+    if ( OTAversion == 0){
+      addLoginfo("Ota version is low and cannot be upgraded");
+      return;
+    }
+    setTimeout(function() {
+        sendcmd = "01ff";
+        let startotacmd = sendcmd + last4byte;
+          otaCharSend(startotacmd).then(function(character) {
+            setTimeout(function() {
+                startTime = new Date().getTime();
+                sendOTAblock(0);
+            }, 150);
+          }).catch(function(err) {
+            updateFail(err);
+          });
+    });
+  }
+
+  /**
+   * @sendOTAblock
+   * Send the data combined to 20 bytes
+   */
+  function sendOTAblock(blockNr) {
+    if (blockNr >= blockCount) {
+        addLoginfo("has been sent (4K) data: " + regetHexBLockCount(blockNr));
+        addLoginfo("File Download to Flash at address 0x000000: " + firmwareArray.length / 2 + " bytes");
+        sendOTAendcmd();
+        return;
+    }
+    if(OTApause == 0){
+      addLoginfo("Stop sending OTA data");
+      OTApuasecount = blockNr;
+      return;
+    }
+    let tempcount = (blockNr / (blockCount * 1.0) * 100);
+    let percent = Math.floor(blockNr / (blockCount * 1.0) * 100);
+    if(tempcount > 99.9){
+      percent = 100;
+    }
+    let sendcuont = blockNr + 1;
+    setStatus("Sending block nr: " + sendcuont + " from " + blockCount + ", " + percent + "% done, time since start " + (new Date().getTime() - startTime) / 1000.0 + "s");
+    var blockNrString = getHexBLockCount(blockNr);
+    var blockString = blockNrString + firmwareArray.substring(blockNr * 32, blockNr * 32 + 32);
+    var blockCRC = getHexCRC(blockString);
+    otaCharSend(blockString + blockCRC).then(function(character) { 
+      setTimeout(function() {
+        if ((blockNr) % 204 == 0) {
+            fanlight.Txchartic.readValue().then(function(result) {
+                addLoginfo("has been sent (4K) data: " + regetHexBLockCount(blockNr));
+                sendOTAblock(blockNr + 1);
+            }).catch(function(err) {
+                updateFail(err);
+            });
+        } else {
+            sendOTAblock(blockNr + 1);
+        }
+      }, 0);
+    }).catch(function(err) {
+        updateFail(err);
+    });
+  }
+  
+  
+  var otaCharSend = function(data) {
+    return new Promise(function(resolve, reject) {
+        console.log("OTA: " + data);
+        fanlight.Txchartic.writeValue(hexToBytes(data)).then(function(character) {
+            resolve("ok");
+        }).catch(function(err) {
+            reject("some error while sending char data");
+        });
+    });
+  }
+
+  function sendOTAendcmd() {
+    var data = "02ff" + getHexBLockCount(blockCount - 1) + getHexBLockCount(~(blockCount - 1) & 0xffff);
+    otaCharSend("02ff").then(function(character) {
+      addLoginfo("Update done after " + (new Date().getTime() - startTime) / 1000 + " seconds");
+    }).catch(function(err) {
+        console.log(err);
+    });
+  }
+
+
+  function getHexBLockCount(count) {
+    var tempHEX = decimalToHex(count);
+    return tempHEX.substring(2, 4) + tempHEX.substring(0, 2);
+  }
+  function regetHexBLockCount(count) {
+    var tempHEX = decimalToHex(count);
+    return  tempHEX.substring(0, 2) + tempHEX.substring(2, 4);
+  }
+  
+  function decimalToHex(d, padding) {
+    var hex = Number(d).toString(16);
+    while (hex.length < 4) {
+        hex = "0" + hex;
+    }
+    return hex;
+  }
+
+  function getHexCRC(data) {
+    var tempCRC = decimalToHex(crc16_modbus(hexToBytes(data)));
+    return tempCRC.substring(2, 4) + tempCRC.substring(0, 2);
+  }
+
+  function crc16_modbus(buffer) {
+    var crc = 0xFFFF;
+    var odd;
+    for (var i = 0; i < buffer.length; i++) {
+        crc = crc ^ buffer[i];
+        for (var j = 0; j < 8; j++) {
+            odd = crc & 0x0001;
+            crc = crc >> 1;
+            if (odd) {
+                crc = crc ^ 0xA001;
+            }
+        }
+    }
+    return crc;
+  }
+
+  function decimalToHex(d, padding) {
+    var hex = Number(d).toString(16);
+    while (hex.length < 4) {
+        hex = "0" + hex;
+    }
+    return hex;
+  }
+
+
+  function setStatus(status) {
+    document.getElementById("percent").innerHTML = "Status: " + status;
+  }
+
+  function bytesToHex(data) {
+    return new Uint8Array(data).reduce(function(memo, i) {
+        return memo + ("0" + i.toString(16)).slice(-2);
+    }, "");
+  }
+
+  function hexToBytes(hex) {
+    for (var bytes = [], c = 0; c < hex.length; c += 2)
+        bytes.push(parseInt(hex.substr(c, 2), 16));
+    return new Uint8Array(bytes);
+  }
+
+  function addLoginfo(logTXT) {
+    var time = new Date().toLocaleTimeString("de-DE");
+    var logString = time + ": > " + logTXT;
+    document.getElementById("log").innerHTML += logString + "\n";
+  }
+  function clearLoginfo() {
+    document.getElementById("log").value= "";
+  }
+
+  function updateFail(err) {
+    addLoginfo("Update error: " + err);
+    setStatus("Update error: " + err);
+  } 
+  function addClog(logTXT) {
+    addLoginfo(logTXT);
+    console.log(logTXT);
+  }
+
+  function deviceDisconnect() {
+    fanlight.disconnect();
+  }
+
+  function ClickReadResult(){
+    fanlight.reachardata();
+  }
+
+
+  function OTA_authentication() {
+    otaCharSend("03ff");
+  }
+  function Version_checking(){
+    if(firmwareArray.length == 0){
+      addLoginfo("please choose file first");
+      return;
+    }
+    otaCharSend("00ff");
+  }
+  function NO_Version_checking(){
+    if(firmwareArray.length == 0){
+      addLoginfo("please choose file first");
+      return;
+    }
+    OTAversion = 1;
+    addLoginfo("Ignore version check");
+  }
+  function StopOtasend(){
+    OTApause = 0;
+  }
+  function ContinueOTAsend(){
+    OTApause = 1;
+    sendOTAblock(OTApuasecount);
+  }
+
+
+  function OTA_Authorization(gattServer) {
+    gattServer.getPrimaryService('00010203-0405-0607-0809-0a0b0c0d1912')
+      .then(service => {
+        console.log("found OTA_Authorization service");
+        ServiceMain = service;
+        return ServiceMain.getCharacteristic('00010203-0405-0607-0809-0a0b0c0d2b12');
+      }).then(characteristic => {
+        console.log('Found OTA_Authorization characteristic');
+        nitifiyCharTemp = characteristic; 
+        return nitifiyCharTemp.startNotifications()
+        .then(() => {
+          nitifiyCharTemp.addEventListener('characteristicvaluechanged', event => {
+            var souvalue = event.target.value;
+            var ntvalue = bytesToHex(souvalue.buffer);
+            addLoginfo("notify-value: " + ntvalue);
+            let sigcmd = ntvalue.substring(0,4);
+            let fileversion = firmwareArray.substring(56, 64);
+            //addLoginfo("file version:" + fileversion);
+            if(ntvalue == "fe0200"){
+
+              OTApause = 0;
+            }
+            else if(ntvalue == "fe0201"){
+              OTApause = 1;
+            }
+            if(ntvalue == "fe0300"){
+              addLoginfo("send ota success");
+              OTAversion = 0;
+              actionOTA_03ff = 0;
+            }
+
+            if(sigcmd == "fe00"){
+              let fe00_notify_4 = [];
+              for (let i = 2; i < souvalue.byteLength; i++) {
+                fe00_notify_4.push('0x' + ('00' + souvalue.getUint8(i).toString(16)).slice(-2));
+              }
+              let noti_4 = bytesToHex(fe00_notify_4);
+              if(fileversion >= noti_4){
+                OTAversion = 1;
+                if(OTAversion == 1){
+                  addLoginfo("OTA Version Check passed");
+                }
+              }
+              else{
+                OTAversion = 0;
+                addLoginfo("The OTA version used for upgrading is lower");
+              }
+            }
+            else if(sigcmd == "fe01"){
+              let notify_16 = [];
+              for (let i = 2; i < souvalue.byteLength; i++) {
+                notify_16.push('0x' + ('00' + souvalue.getUint8(i).toString(16)).slice(-2));
+              }
+              let key = [0x66,0x65,0x64,0x63,0x62,0x61,0x39,0x38,0x37,0x36,0x35,0x34,0x33,0x32,0x31,0x30];
+              let aesarr = slowAES.aes.decrypt(notify_16,key,16);
+              last4byte = aesarr.slice(0,4);
+              let enstr = aesarr.map(function(aesarr) {
+                return (aesarr & 0xFF).toString(16);
+              }).join('');
+              let newke = CryptoJS.enc.Hex.parse(enstr);
+              let zresult = newke.toString(CryptoJS.enc.Utf8);
+              let fresult = zresult.split("").reverse().join("");
+              //addLoginfo(fresult);
+              let ag6byte = fresult.slice(0,12);
+              if (ag6byte == "hanamfanligh"){
+                if(actionOTA_03ff == 0){
+                  addLoginfo("The signature is pass");
+                  addLoginfo("authentication succese");
+                }
+                actionOTA_03ff = 1;
+              }
+            }
+          });
+        });
+      }).catch(error => console.log(error));
+  }
+
+</script>
