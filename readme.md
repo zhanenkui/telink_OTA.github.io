@@ -16,7 +16,7 @@
 
 ### 使用
 
-[地址](https://developers.google.com/web/updates/2015/07/interact-with-ble-devices-on-the-web)
+[https://zhanenkui.github.io/telink_DFU.github.io/](https://zhanenkui.github.io/telink_DFU.github.io/)
 
 **访问以上连接，进入web blutooth DFU界面：**
 
