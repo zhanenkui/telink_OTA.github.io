@@ -16,6 +16,8 @@
 
 ### 使用
 
+**请使用 `Chrome 45+` 浏览器打开(目前chrome对于web bluetooth支持较好)**
+
 [https://zhanenkui.github.io/telink_DFU.github.io/](https://zhanenkui.github.io/telink_DFU.github.io/)
 
 **访问以上连接，进入web blutooth DFU界面：**
