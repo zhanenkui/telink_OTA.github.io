@@ -1,4 +1,4 @@
-# web bluetooth DFU
+# web bluetooth OTA
 
 - [web bluetooth](https://webbluetoothcg.github.io/web-bluetooth/)
 - [web bluetooth samples](https://googlechrome.github.io/samples/web-bluetooth/index.html)
@@ -14,13 +14,18 @@
 2. 有ota的bin文件
 3. 通电启动的telink开发板
 
+[OTA file download](http://wiki.telink-semi.cn/web_bluetooth_DFU/OTA_file.rar)
+[OTA process Previewc](http://wiki.telink-semi.cn/web_bluetooth_DFU/ota_spec.svg)
+
+可下载ota文件来跟随以下步骤测试，熟悉器其功能。
+
 ### 使用
 
 **请使用 `Chrome 45+` 浏览器打开(目前chrome对于web bluetooth支持较好)**
 
 [https://zhanenkui.github.io/telink_DFU.github.io/](https://zhanenkui.github.io/telink_DFU.github.io/)
 
-**访问以上连接，进入web blutooth DFU界面：**
+**访问以上连接，进入web blutooth OTA界面：**
 
 ![interface](image/interface.png)
 
