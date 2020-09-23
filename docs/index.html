@@ -190,7 +190,7 @@
 
   /**
    * @sendOTAendcmd
-   * 
+   * After the OTAS package data is sent, send the end command
    */
   function sendOTAendcmd() {
     var data = "02ff" + BLockCount_to_Hex(blockCount - 1) + BLockCount_to_Hex(~(blockCount - 1) & 0xffff);
