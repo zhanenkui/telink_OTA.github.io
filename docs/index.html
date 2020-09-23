@@ -29,7 +29,7 @@
           <button onclick="Version_checking()">Version checking</button>
           <button onclick="NO_Version_checking()">Ignore version checking</button><br><hr><br>
 
-          <button id="shownotificate" onclick="OTA_authentication()">OTA authentication</button><br><hr><br>
+          <button id="shownotificate" onclick="Send_OTA_authentication()">OTA authentication</button><br><hr><br>
 
           <button id="send" onclick="BeginOTAdata()">start send ota package</button><br><hr><br>
           
@@ -50,14 +50,11 @@
 
 <script>
 
-    var firmwareArray = "";
-    var blockCount,fosum = 0;
-    var startTime,sendcmd,OTAEnabled;
-    var getnotifyvalue,last4byte,actionOTA_03ff=0;
-
+    var blockCount,firmwareArray = "";            //ota-file
+    var startTime,sendcmd;                        //sendcmd and time
+    var last4byte,OTAversion=0,actionOTA_03ff=0;  //version check and authentication
     var ServiceMain,nitifiyCharTemp;              //2b12notify
-    var batServiceMain,batnitifiyCharTemp;        //batery
-    var OTApause=1,OTApuasecount=0,OTAversion=0; //OTA-puase,count
+    var OTApause=1,OTApuasecount=0;               //OTA-puase,count
 
     var fanlight = new Fanlight();
 
@@ -127,7 +124,7 @@
                 sendOTAblock(0);
             }, 150);
           }).catch(function(err) {
-            updateFail(err);
+            Failed_info(err);
           });
     });
   }
@@ -138,7 +135,7 @@
    */
   function sendOTAblock(blockNr) {
     if (blockNr >= blockCount) {
-        addLoginfo("has been sent (4K) data: " + regetHexBLockCount(blockNr));
+        addLoginfo("has been sent (4K) data: " + reBLockCount_to_Hex(blockNr));
         addLoginfo("File Download to Flash at address 0x000000: " + firmwareArray.length / 2 + " bytes");
         sendOTAendcmd();
         return;
@@ -154,29 +151,32 @@
       percent = 100;
     }
     let sendcuont = blockNr + 1;
-    setStatus("Sending block nr: " + sendcuont + " from " + blockCount + ", " + percent + "% done, time since start " + (new Date().getTime() - startTime) / 1000.0 + "s");
-    var blockNrString = getHexBLockCount(blockNr);
+    setStatus("Sending block nr: [" + sendcuont + " from " + blockCount + "], [" + percent + "% done], time since start [" + (new Date().getTime() - startTime) / 1000.0 + "s]");
+    var blockNrString = BLockCount_to_Hex(blockNr);
     var blockString = blockNrString + firmwareArray.substring(blockNr * 32, blockNr * 32 + 32);
     var blockCRC = getHexCRC(blockString);
     otaCharSend(blockString + blockCRC).then(function(character) { 
       setTimeout(function() {
         if ((blockNr) % 204 == 0) {
             fanlight.Txchartic.readValue().then(function(result) {
-                addLoginfo("has been sent (4K) data: " + regetHexBLockCount(blockNr));
+                addLoginfo("has been sent (4K) data: " + reBLockCount_to_Hex(blockNr));
                 sendOTAblock(blockNr + 1);
             }).catch(function(err) {
-                updateFail(err);
+                Failed_info(err);
             });
         } else {
             sendOTAblock(blockNr + 1);
         }
       }, 0);
     }).catch(function(err) {
-        updateFail(err);
+        Failed_info(err);
     });
   }
   
-  
+  /**
+   * @otaCharSend
+   * Send data by characteristic
+   */
   var otaCharSend = function(data) {
     return new Promise(function(resolve, reject) {
         console.log("OTA: " + data);
@@ -188,8 +188,12 @@
     });
   }
 
+  /**
+   * @sendOTAendcmd
+   * 
+   */
   function sendOTAendcmd() {
-    var data = "02ff" + getHexBLockCount(blockCount - 1) + getHexBLockCount(~(blockCount - 1) & 0xffff);
+    var data = "02ff" + BLockCount_to_Hex(blockCount - 1) + BLockCount_to_Hex(~(blockCount - 1) & 0xffff);
     otaCharSend("02ff").then(function(character) {
       addLoginfo("Update done after " + (new Date().getTime() - startTime) / 1000 + " seconds");
     }).catch(function(err) {
@@ -197,17 +201,29 @@
     });
   }
 
-
-  function getHexBLockCount(count) {
+  /**
+   * @BLockCount_to_Hex
+   * The send count is converted to hex and placed in the first two bytes
+   */
+  function BLockCount_to_Hex(count) {
     var tempHEX = decimalToHex(count);
     return tempHEX.substring(2, 4) + tempHEX.substring(0, 2);
   }
-  function regetHexBLockCount(count) {
+
+  /**
+   * @reBLockCount_to_Hex
+   * inversion，used for log display counting
+   */
+  function reBLockCount_to_Hex(count) {
     var tempHEX = decimalToHex(count);
     return  tempHEX.substring(0, 2) + tempHEX.substring(2, 4);
   }
   
-  function decimalToHex(d, padding) {
+  /**
+   * @decimalToHex
+   * decima converted to hex
+   */
+   function decimalToHex(d, padding) {
     var hex = Number(d).toString(16);
     while (hex.length < 4) {
         hex = "0" + hex;
@@ -215,6 +231,10 @@
     return hex;
   }
 
+  /**
+   * @getHexCRC
+   * Get the hexadecimal CRC
+   */
   function getHexCRC(data) {
     var tempCRC = decimalToHex(crc16_modbus(hexToBytes(data)));
     return tempCRC.substring(2, 4) + tempCRC.substring(0, 2);
@@ -236,61 +256,85 @@
     return crc;
   }
 
-  function decimalToHex(d, padding) {
-    var hex = Number(d).toString(16);
-    while (hex.length < 4) {
-        hex = "0" + hex;
-    }
-    return hex;
-  }
-
-
+  /**
+   * @setStatus
+   * Displays the sent status information in the web interface
+   */
   function setStatus(status) {
     document.getElementById("percent").innerHTML = "Status: " + status;
   }
 
+  /**
+   * @bytesToHex
+   * Convert ByteArray to hex
+   */
   function bytesToHex(data) {
     return new Uint8Array(data).reduce(function(memo, i) {
         return memo + ("0" + i.toString(16)).slice(-2);
     }, "");
   }
 
+  /**
+   * @hexToBytes
+   * Convert hex to ByteArray
+   */
   function hexToBytes(hex) {
     for (var bytes = [], c = 0; c < hex.length; c += 2)
         bytes.push(parseInt(hex.substr(c, 2), 16));
     return new Uint8Array(bytes);
   }
 
+  /**
+   * @addLoginfo
+   * Displays the interaction information in the log box on the web page
+   */
   function addLoginfo(logTXT) {
     var time = new Date().toLocaleTimeString("de-DE");
     var logString = time + ": > " + logTXT;
     document.getElementById("log").innerHTML += logString + "\n";
   }
+
+  /**
+   * @clearLoginfo
+   * Clear the information in the log box
+   */
   function clearLoginfo() {
     document.getElementById("log").value= "";
   }
 
-  function updateFail(err) {
+  /**
+   * @Failed_info
+   * Display exception information
+   */
+  function Failed_info(err) {
     addLoginfo("Update error: " + err);
     setStatus("Update error: " + err);
-  } 
-  function addClog(logTXT) {
-    addLoginfo(logTXT);
-    console.log(logTXT);
   }
 
+  /**
+   * @deviceDisconnect
+   * device disconnect
+   */
   function deviceDisconnect() {
     fanlight.disconnect();
   }
 
-  function ClickReadResult(){
-    fanlight.reachardata();
-  }
-
-
-  function OTA_authentication() {
+  /**
+   * @Send_OTA_authentication
+   * Send authentication command
+   */
+  function Send_OTA_authentication() {
+    if(firmwareArray.length == 0){
+      addLoginfo("please choose file first");
+      return;
+    }
     otaCharSend("03ff");
   }
+
+  /**
+   * @Version_checking
+   * Send Version checking command
+   */
   function Version_checking(){
     if(firmwareArray.length == 0){
       addLoginfo("please choose file first");
@@ -298,6 +342,11 @@
     }
     otaCharSend("00ff");
   }
+ 
+  /**
+   * @NO_Version_checking
+   * Ignore version validation
+   */
   function NO_Version_checking(){
     if(firmwareArray.length == 0){
       addLoginfo("please choose file first");
@@ -306,15 +355,28 @@
     OTAversion = 1;
     addLoginfo("Ignore version check");
   }
+
+  /**
+   * @StopOtasend
+   * stop send ota data
+   */
   function StopOtasend(){
     OTApause = 0;
   }
+
+  /**
+   * @StopOtasend
+   * continue send ota data
+   */
   function ContinueOTAsend(){
     OTApause = 1;
     sendOTAblock(OTApuasecount);
   }
 
-
+  /**
+   * @OTA_Authorization
+   * Process feedback after a command is sent
+   */
   function OTA_Authorization(gattServer) {
     gattServer.getPrimaryService('00010203-0405-0607-0809-0a0b0c0d1912')
       .then(service => {
@@ -381,7 +443,7 @@
               let ag6byte = fresult.slice(0,12);
               if (ag6byte == "hanamfanligh"){
                 if(actionOTA_03ff == 0){
-                  addLoginfo("The signature is pass");
+                  addLoginfo("Ota signature authentication passed");
                   addLoginfo("authentication succese");
                 }
                 actionOTA_03ff = 1;

@@ -14,10 +14,13 @@
 2. 有ota的bin文件
 3. 通电启动的telink开发板
 
-[OTA file download](http://wiki.telink-semi.cn/web_bluetooth_DFU/OTA_file.rar)
-[OTA process Previewc](http://wiki.telink-semi.cn/web_bluetooth_DFU/ota_spec.svg)
-
-可下载ota文件来跟随以下步骤测试，熟悉器其功能。
+> 可点击下面链接下载这个OTA demo文件来跟随以下步骤测试，熟悉器其功能。
+> [OTA file download](http://wiki.telink-semi.cn/web_bluetooth_DFU/OTA_file.rar)
+>
+> 这个OTA demo的流程图可参见如下链接查看
+> [OTA process Previewc](http://wiki.telink-semi.cn/web_bluetooth_DFU/ota_spec.svg)
+>
+> 项目源码参见：[source code](https://github.com/zhanenkui/telink_OTA.github.io)
 
 ### 使用
 
@@ -41,11 +44,11 @@
 
 ![connect](image/connect-success.png)
 
-#### 2.点击选择文件按钮，选择相应`bin`文件，点击`version checking`版本效验，然后点击`OTA authentication`签名认证
+#### 2.点击选择文件按钮，选择相应`bin`文件，点击`version checking`版本校验，然后点击`OTA authentication`签名认证
 
 ![show-info](image/show-info.png)
 
-#### 3.以上效验都通过之后点击`start send ota package`开始发送ota包(右侧会有发送的状态以及数据信息)
+#### 3.以上校验都通过之后点击`start send ota package`开始发送ota包(右侧会有发送的状态以及数据信息)
 
 在log中出现`send ota success`并且设备断开连接了，而右侧白色框(串口工具)界面中显示CMD-OTA-END,并且重新上电，显示新版本信息`FW_version:{3:4:2:1 }`则表示升级成功了。
 
