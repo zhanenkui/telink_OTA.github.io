@@ -15,10 +15,10 @@
 3. 通电启动的telink开发板
 
 > 可点击下面链接下载这个OTA demo文件来跟随以下步骤测试，熟悉器其功能。  
-> [OTA file download](http://wiki.telink-semi.cn/web_bluetooth_DFU/OTA_file.rar)
+> [OTA file download](http://wiki.telink-semi.cn/web_bluetooth_OTA/OTA_file.rar)
 >
 > 这个OTA demo的流程图可参见如下链接查看  
-> [OTA process Previewc](http://wiki.telink-semi.cn/web_bluetooth_DFU/ota_spec.svg)
+> [OTA process Previewc](http://wiki.telink-semi.cn/web_bluetooth_OTA/ota_spec.svg)
 >
 > 项目源码参见：[source code](https://github.com/zhanenkui/telink_OTA.github.io)
 
